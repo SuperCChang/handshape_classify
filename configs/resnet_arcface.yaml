@@ -1,0 +1,12 @@
+model:
+  name: "resnet_arcface"
+  s: 30.0
+  margin: 0.5
+
+data:
+  feature_type: "distance_matrix" 
+
+train:
+  batch_size: 128 
+  lr: 0.0005
+  eopch: 300

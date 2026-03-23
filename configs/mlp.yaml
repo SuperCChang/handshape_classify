@@ -1,0 +1,4 @@
+model:
+  name: "mlp"
+  input_dim: 105
+  hidden_dim: 256
