@@ -2,6 +2,7 @@ experiment_base_name: "handshape_classify"
 
 data:
   train_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/data/classified_smplx"
+  # val_path: "D:/data/手语词汇/video-smplx/val"
   which_side_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/data/which_side.csv"
   smplx_model_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/assets"
   num_classes: 116
@@ -9,6 +10,6 @@ data:
 
 train:
   batch_size: 32
-  epochs: 300
+  epochs: 150
   lr: 0.001
   save_dir: "runs/"

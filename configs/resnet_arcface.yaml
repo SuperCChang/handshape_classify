@@ -9,4 +9,4 @@ data:
 train:
   batch_size: 128 
   lr: 0.0005
-  eopch: 300
+  eopch: 150

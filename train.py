@@ -17,96 +17,12 @@ from dataloaders.dataset import HandshapeDataset
 from torch.utils.data import DataLoader
 from models import build_model
 
-
-class TqdmLoggingHandler(logging.Handler):
-    """
-    自定义的 Logging Handler，解决标准 logging 输出会打断 tqdm 进度条的问题。
-    """
-    def __init__(self, level=logging.NOTSET):
-        super().__init__(level)
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            tqdm.write(msg)
-            self.flush()
-        except Exception:
-            self.handleError(record)
-
-
-def setup_logger(log_file_path):
-    """配置日志记录器，同时输出到文件和控制台(适配tqdm)"""
-    logger = logging.getLogger('train_logger')
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear() # 清除默认的 handlers
-
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-    file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    console_handler = TqdmLoggingHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    return logger
-
-
-def get_run_dir(base_dir, method_name):
-    """
-    动态生成运行目录，格式为: {Date}_{Daily_Run_Index}_{Method_Name}
-    例如: runs/20260323_00_mlp_arcface
-    """
-    base_path = Path(base_dir)
-    base_path.mkdir(parents=True, exist_ok=True)
-    
-    date_str = datetime.now().strftime("%Y%m%d")
-    
-    existing_dirs = [d.name for d in base_path.iterdir() if d.is_dir() and d.name.startswith(date_str)]
-    
-    idx = 0
-    if existing_dirs:
-        indices = []
-        for d in existing_dirs:
-            parts = d.split('_')
-            # 假设文件夹名称格式严格为 YYYYMMDD_XX_method_name
-            if len(parts) >= 2 and parts[1].isdigit():
-                indices.append(int(parts[1]))
-        if indices:
-            idx = max(indices) + 1
-            
-    run_name = f"{date_str}_{idx:02d}_{method_name}"
-    return base_path / run_name
-
-
-def load_config():
-    """解析参数并合并配置"""
-    parser = argparse.ArgumentParser(description="手形分类训练脚本")
-    parser.add_argument('--model', type=str, default='mlp_arcface', help='要训练的模型名称(对应configs/下的yaml)')
-    args = parser.parse_args()
-
-    # 载入全局配置
-    with open('configs/global_config.yaml', 'r', encoding='utf-8') as f:
-        cfg = yaml.safe_load(f)
-
-    # 载入并合并模型配置
-    with open(f'configs/{args.model}.yaml', 'r', encoding='utf-8') as f:
-        model_cfg = yaml.safe_load(f)
-
-    for key, value in model_cfg.items():
-        if isinstance(value, dict) and key in cfg and isinstance(cfg[key], dict):
-            cfg[key].update(value)
-        else:
-            cfg[key] = value
-
-    return cfg
+from utils.core import setup_logger, get_new_run_dir, load_merged_config, generate_synthetic_negatives
 
 
 def train_epoch(model, dataloader, criterion, optimizer, device):
     """
     专门负责一个 Epoch 内的训练逻辑。
-    为保持进度条清爽，这里内部不打印任何 log，仅返回最终计算指标。
     """
     model.train()
     total_loss = 0.0
@@ -133,20 +49,34 @@ def train_epoch(model, dataloader, criterion, optimizer, device):
 
 
 def main():
-    # 1. 初始化配置与运行目录
-    cfg = load_config()
+    parser = argparse.ArgumentParser(description="手形分类训练脚本")
+    parser.add_argument('--model', type=str, default='resnet_arcface')
+    parser.add_argument('--epochs', type=int, default=None)
+    parser.add_argument('--lr', type=float, default=None)
+    parser.add_argument('--batch_size', type=int, default=None)
+    args = parser.parse_args()
+
+    cfg = load_merged_config(args.model)
+
+    if args.epochs is not None:
+        cfg['train']['epochs'] = args.epochs
+    if args.lr is not None:
+        cfg['train']['lr'] = args.lr
+    if args.batch_size is not None:
+        cfg['train']['batch_size'] = args.batch_size
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     method_name = f"{cfg['model']['name']}_{cfg['data']['feature_type']}"
-    run_dir = get_run_dir(cfg['train']['save_dir'], method_name)
+    run_dir = get_new_run_dir(cfg['train']['save_dir'], method_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. 配置 Logger
-    log_file = run_dir / "train.log"
-    logger = setup_logger(log_file)
+    logger = setup_logger(run_dir / "train.log")
 
     try:
-        logger.info(f"============== 实验初始化 ==============")
+        logger.info(f"{'='*60}")
+        logger.info(f"实验初始化")
+        logger.info(f"{'='*60}")
         logger.info(f"运行目录：{run_dir}")
         logger.info(f"计算设备：{device}")
         logger.info(f"特征提取：{cfg['data']['feature_type']}")
@@ -161,6 +91,20 @@ def main():
             feature_type=cfg['data']['feature_type'],
             smplx_model_path=cfg['data']['smplx_model_path']
         )
+
+        sample_feat = dataset[0][0]
+        dynamic_feat_dim = sample_feat.shape[0]
+        logger.info(f"[*] 动态推断特征维度为: {dynamic_feat_dim}")
+
+        logger.info(f"检测到类别数为 {cfg['data']['num_classes']}，正在生成第 117 类(负样本)...")
+        neg_count = int(len(dataset) * 0.08) 
+        neg_feats, neg_labels = generate_synthetic_negatives(
+            num_negatives=neg_count,
+            feature_type=cfg['data']['feature_type']
+        )
+        dataset.append_samples(neg_feats, neg_labels)
+        logger.info(f"已注入{neg_count}条合成负样本。")
+        
         dataloader = DataLoader(
             dataset, 
             batch_size=cfg['train']['batch_size'], 
@@ -168,11 +112,7 @@ def main():
             pin_memory=True
         )
         logger.info(f"数据集构建完毕，共计{len(dataset)}个样本，划分为{len(dataloader)}个Batch。")
-
-        sample_inputs, _ = next(iter(dataloader))
-        dynamic_feat_dim = sample_inputs.shape[1]
-        logger.info(f"[*] 动态推断特征维度为: {dynamic_feat_dim}")
-
+        
         logger.info(f"正在构建模型 [{cfg['model']['name']}]...")
         model = build_model(
             model_name=cfg['model']['name'],
@@ -241,7 +181,8 @@ def main():
 
     except Exception as e:
         logger.error(f"训练发生意外崩溃: {e}")
-        logger.error(traceback.format_exc())
+        error_traceback = traceback.format_exc()
+        logger.error(error_traceback)
         
         for handler in logger.handlers[:]:
             handler.close()
@@ -251,6 +192,21 @@ def main():
             shutil.rmtree(run_dir, ignore_errors=True)
             print(f"\n[清理机制触发]: 检测到实验未完成即崩溃，已自动删除无效目录 -> {run_dir}")
             
+        error_dir = Path(cfg['train']['save_dir']) / "errors"
+        error_dir.mkdir(parents=True, exist_ok=True)
+        
+        error_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        error_log_file = error_dir / f"error_{error_time}_{method_name}.log"
+        
+        with open(error_log_file, 'w', encoding='utf-8') as ef:
+            ef.write(f"========== 崩溃时间: {error_time} ==========\n")
+            ef.write(f"实验名称: {method_name}\n")
+            ef.write(f"关键配置: Batch={cfg['train']['batch_size']}, LR={cfg['train']['lr']}\n")
+            ef.write(f"报错简述: {e}\n\n")
+            ef.write("========== 完整堆栈 (Traceback) ==========\n")
+            ef.write(error_traceback)
+            
+        print(f"[错误日志记录]: 本次崩溃的详细堆栈已独立封存至 -> {error_log_file}")
         raise e
 
 

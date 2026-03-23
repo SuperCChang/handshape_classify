@@ -1,4 +1,4 @@
 /data
 /assets
 /runs
-/__pycache__
+__pycache__/

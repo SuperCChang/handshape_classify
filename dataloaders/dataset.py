@@ -54,6 +54,27 @@ class HandshapeDataset(Dataset):
 
         logging.info(f"数据集构建完毕！共提取出{len(self.samples)}个单帧静态样本。")
 
+    def append_samples(self, new_features, new_labels):
+        """
+        动态添加样本到数据集（如负样本）
+        :param new_features: torch.Tensor 或 list, 形状应为 (N, C, H, W) 或 (N, Dim)
+        :param new_labels: torch.Tensor 或 list, 形状应为 (N,)
+        """
+        if isinstance(new_features, torch.Tensor):
+            new_features = list(torch.unbind(new_features, dim=0))
+        
+        if isinstance(new_labels, torch.Tensor):
+            new_labels = new_labels.tolist()
+
+        if len(self.samples) > 0:
+            existing_shape = self.samples[0].shape
+            new_shape = new_features[0].shape
+            if existing_shape != new_shape:
+                raise ValueError(f"新样本形状 {new_shape} 与已有数据形状 {existing_shape} 不匹配！")
+
+        self.samples.extend(new_features)
+        self.labels.extend(new_labels)
+
     def __len__(self):
         return len(self.samples)
 
