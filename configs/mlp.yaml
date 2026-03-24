@@ -1,4 +1,13 @@
 model:
   name: "mlp"
+  head: "linear"
   input_dim: 105
   hidden_dim: 256
+
+data:
+  feature_type: "distance_flatten" 
+
+train:
+  batch_size: 32 
+  lr: 0.001
+  eopch: 300

@@ -1,5 +1,6 @@
 model:
-  name: "resnet_arcface"
+  name: "resnet"
+  head: "arcface"
   s: 30.0
   margin: 0.5
 

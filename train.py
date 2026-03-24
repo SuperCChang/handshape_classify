@@ -50,14 +50,17 @@ def train_epoch(model, dataloader, criterion, optimizer, device):
 
 def main():
     parser = argparse.ArgumentParser(description="手形分类训练脚本")
-    parser.add_argument('--model', type=str, default='resnet_arcface')
+    parser.add_argument('--model', type=str, default='resnet')
+    parser.add_argument('--head', type=str, default='linear')
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--batch_size', type=int, default=None)
     args = parser.parse_args()
 
     cfg = load_merged_config(args.model)
-
+    
+    if args.head is not None:
+        cfg['model']['head'] = args.head
     if args.epochs is not None:
         cfg['train']['epochs'] = args.epochs
     if args.lr is not None:
@@ -67,16 +70,14 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    method_name = f"{cfg['model']['name']}_{cfg['data']['feature_type']}"
+    method_name = f"[{cfg['model']['name']}]_[{cfg['model']['head']}]_[{cfg['data']['feature_type']}]"
     run_dir = get_new_run_dir(cfg['train']['save_dir'], method_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     logger = setup_logger(run_dir / "train.log")
 
     try:
-        logger.info(f"{'='*60}")
-        logger.info(f"实验初始化")
-        logger.info(f"{'='*60}")
+        logger.info(f"==========实验初始化==========")
         logger.info(f"运行目录：{run_dir}")
         logger.info(f"计算设备：{device}")
         logger.info(f"特征提取：{cfg['data']['feature_type']}")
@@ -96,14 +97,14 @@ def main():
         dynamic_feat_dim = sample_feat.shape[0]
         logger.info(f"[*] 动态推断特征维度为: {dynamic_feat_dim}")
 
-        logger.info(f"检测到类别数为 {cfg['data']['num_classes']}，正在生成第 117 类(负样本)...")
+        """logger.info(f"检测到类别数为 {cfg['data']['num_classes']}，正在生成第0类(负样本)...")
         neg_count = int(len(dataset) * 0.08) 
         neg_feats, neg_labels = generate_synthetic_negatives(
             num_negatives=neg_count,
             feature_type=cfg['data']['feature_type']
         )
         dataset.append_samples(neg_feats, neg_labels)
-        logger.info(f"已注入{neg_count}条合成负样本。")
+        logger.info(f"已注入{neg_count}条合成负样本。")"""
         
         dataloader = DataLoader(
             dataset, 
@@ -116,6 +117,7 @@ def main():
         logger.info(f"正在构建模型 [{cfg['model']['name']}]...")
         model = build_model(
             model_name=cfg['model']['name'],
+            head=cfg['model'].get('head', 'linear'),
             num_classes=cfg['data']['num_classes'],
             input_feat_dim=dynamic_feat_dim,
             hidden_dim=cfg['model'].get('hidden_dim', 256),

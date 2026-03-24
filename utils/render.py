@@ -1,5 +1,5 @@
 import os
-os.environ["PYOPENGL_PLATFORM"] = "osmesa"
+# os.environ["PYOPENGL_PLATFORM"] = "osmesa"
 
 import cv2
 import torch
@@ -57,7 +57,7 @@ def render_smplx_to_video(
         predicted_labels_path: 你刚刚推理出来的 (F, 2) 预测标签 .npy 文件路径 (可选)
         template_dir: 存放手形参数模板的文件夹 (可选)
     """
-    logging.info("🎬 初始化 3D 渲染引擎...")
+    logging.info("初始化 3D 渲染引擎...")
     
     # 1. 初始化 SMPL-X 模型
     smplx_model = smplx.create(
@@ -117,7 +117,7 @@ def render_smplx_to_video(
         'smplx_jaw_pose': 'jaw_pose'
     }
 
-    logging.info("⏳ 正在逐帧渲染视频，请稍候...")
+    logging.info("正在逐帧渲染视频")
     for i, npy_file in enumerate(smplx_files):
         data = np.load(npy_file, allow_pickle=True).item()
         kwargs_for_smplx = {}

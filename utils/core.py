@@ -62,13 +62,64 @@ def get_new_run_dir(base_dir, method_name):
     return base_path / run_name
 
 
-def get_latest_run_dir(base_dir, method_name):
-    """Evaluate/Infer 专用：自动寻找最近一次的实验目录"""
+def parse_indices(indices_str):
+    """辅助函数：将 '1-3,5' 这种字符串解析为集合 {1, 2, 3, 5}"""
+    if not indices_str:
+        return set()
+    indices = set()
+    # 去除空格并按逗号分割
+    for part in indices_str.replace(' ', '').split(','):
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            indices.update(range(start, end + 1))
+        else:
+            indices.add(int(part))
+    return indices
+
+def get_target_run_dirs(base_dir, method_name, run_name=None, run_id_str=None):
+    """
+    升级版寻址引擎：支持空缺跳过提醒、跨模型自动识别。
+    """
     base_path = Path(base_dir)
-    existing_dirs = sorted([d for d in base_path.iterdir() if d.is_dir() and method_name in d.name])
-    if not existing_dirs:
-        raise FileNotFoundError(f"未找到关于 {method_name} 的历史实验记录！")
-    return existing_dirs[-1]
+    
+    if run_name:
+        target_path = base_path / run_name
+        return [target_path] if target_path.exists() else []
+
+    # 1. 获取所有文件夹
+    all_dirs = sorted([
+        d for d in base_path.iterdir() 
+        if d.is_dir() and d.name[0].isdigit()
+    ])
+    if not all_dirs:
+        raise FileNotFoundError(f"在 {base_dir} 下未找到任何实验目录。")
+
+    if not run_id_str:
+        # 默认模式：依然按 method_name 找最新的
+        filtered = [d for d in all_dirs if method_name in d.name]
+        return [filtered[-1]] if filtered else []
+
+    target_indices = parse_indices(run_id_str)
+    latest_date = all_dirs[-1].name.split('_')[0]
+    
+    found_dirs = []
+    found_indices = set()
+    
+    for d in all_dirs:
+        if d.name.startswith(latest_date):
+            parts = d.name.split('_')
+            if len(parts) >= 2 and parts[1].isdigit():
+                idx = int(parts[1])
+                if idx in target_indices:
+                    found_dirs.append(d)
+                    found_indices.add(idx)
+
+    # 4. 空缺检查
+    missing = target_indices - found_indices
+    if missing:
+        print(f"[警告] 以下编号的文件夹未找到: {sorted(list(missing))}")
+        
+    return found_dirs
 
 
 def load_merged_config(model_name):

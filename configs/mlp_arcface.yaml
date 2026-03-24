@@ -1,6 +1,0 @@
-model:
-  name: "mlp_arcface"
-  input_dim: 105 
-  hidden_dim: 256
-  s: 30.0
-  margin: 0.6

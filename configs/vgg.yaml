@@ -1,5 +1,6 @@
 model:
-  name: "vgg_arcface"
+  name: "vgg"
+  head: "arcface"
   s: 30.0
   margin: 0.5
 
@@ -8,3 +9,5 @@ data:
 
 train:
   batch_size: 128
+  lr: 0.0005
+  eopch: 150

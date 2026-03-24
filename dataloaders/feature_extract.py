@@ -21,10 +21,6 @@ def _compute_distance_matrix(joints_coord):
     return dist_matrix.unsqueeze(1) # 输出形状: (F, 1, 15, 15)
 
 
-# ==========================================
-# SMPL-X 骨架通用提取逻辑 (避免代码重复)
-# ==========================================
-
 def _get_3d_joints_from_smplx(raw_data_list, smplx_model_path):
     """核心通用引擎：将 raw_data 转为真实的 3D 关节坐标集合"""
     if smplx_model_path is None:
@@ -81,10 +77,6 @@ def _get_3d_joints_from_smplx(raw_data_list, smplx_model_path):
 
     return joint_sequences, labels
 
-
-# ==========================================
-# 暴露给 Dataset 的特征提取接口
-# ==========================================
 
 def extract_axis_angle(raw_data_list, **kwargs):
     """特征方案 1：直接使用 45 维轴角"""

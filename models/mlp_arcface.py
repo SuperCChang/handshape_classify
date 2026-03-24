@@ -50,11 +50,11 @@ class MLP_ArcFace(nn.Module):
             nn.Linear(input_feat_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             nn.Linear(hidden_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3)
+            nn.Dropout(0.1)
         )
 
         self.arcface = ArcFace(in_features=hidden_dim, out_features=num_classes, s=s, m=m)
