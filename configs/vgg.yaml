@@ -3,9 +3,7 @@ model:
   head: "arcface"
   s: 30.0
   margin: 0.5
-
-data:
-  feature_type: "distance_matrix"
+  feature: "distance_matrix"
 
 train:
   batch_size: 128

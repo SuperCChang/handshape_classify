@@ -108,7 +108,7 @@ def run_evaluation_for_dir(run_dir, cfg, args, device, num_classes, train_loader
     logger.info(f"\n{'='*60}")
     logger.info(f"正在评估实验: {run_dir.name}")
     logger.info(f"模型架构: {cfg['model']['name']} | 分类头: {cfg['model'].get('head', 'linear')}")
-    logger.info(f"特征类型: {cfg['data']['feature_type']}")
+    logger.info(f"特征类型: {cfg['model']['feature']}")
     logger.info(f"{'='*60}")
     
     if not weight_path.exists():
@@ -234,7 +234,7 @@ def main():
         with open(config_path, 'r', encoding='utf-8') as f:
             current_cfg = yaml.safe_load(f)
 
-        feature_type = current_cfg['data']['feature_type']
+        feature_type = current_cfg['model']['feature']
         num_classes = current_cfg['data']['num_classes']
 
         # 如果这种特征是首次遇见，则执行加载

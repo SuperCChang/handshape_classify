@@ -1,12 +1,12 @@
 experiment_base_name: "handshape_classify"
 
 data:
-  train_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/data/classified_smplx"
+  train_path: "C:/Users/capg303/Desktop/Project/Handshape/handshape_classify/data/classified_smplx"
   # val_path: "D:/data/手语词汇/video-smplx/val"
-  which_side_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/data/which_side.csv"
-  smplx_model_path: "C:/Users/capg303/Desktop/Project/手形/handshape_classify/assets"
+  which_side_path: "C:/Users/capg303/Desktop/Project/Handshape/handshape_classify/data/which_side.csv"
+  smplx_model_path: "C:/Users/capg303/Desktop/Project/Handshape/handshape_classify/assets"
+  handshape_templates_dir: "C:/Users/capg303/Desktop/Project/Handshape/handshape_classify/assets/templates"
   num_classes: 116
-  feature_type: "distance_flatten"
 
 train:
   batch_size: 32

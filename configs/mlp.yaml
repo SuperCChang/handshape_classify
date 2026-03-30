@@ -3,9 +3,7 @@ model:
   head: "linear"
   input_dim: 105
   hidden_dim: 256
-
-data:
-  feature_type: "distance_flatten" 
+  feature: "distance_flatten" 
 
 train:
   batch_size: 32 

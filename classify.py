@@ -59,25 +59,21 @@ def classify(input_dir, model, cfg, device, smooth_window=5):
         logging.error("输入的文件夹为空！")
         return None
 
-    # 2. 伪造 Dataset 所需的基础数据结构
     raw_data = [{'npy_list': smplx_data_list, 'side': 'LR', 'label': 0}]
     
-    # 3. 动态调用特征提取器
-    feature_type = cfg['data']['feature_type']
+    feature_type = cfg['model']['feature']
     smplx_model_path = cfg['data']['smplx_model_path']
     logging.info(f"正在提取序列特征 (提取策略: {feature_type})...")
     
     extractor_func = FEATURE_EXTRACTORS[feature_type]
     features, _ = extractor_func(raw_data, smplx_model_path=smplx_model_path)
     
-    # 提取出的 features 列表中：[0] 为左手序列，[1] 为右手序列
     feat_tensor_l = features[0].to(device)
     feat_tensor_r = features[1].to(device)
     
     F = feat_tensor_l.shape[0]
     logging.info(f"特征提取完毕，序列长度: {F} 帧。")
 
-    # 4. 模型前向推理
     model.eval()
     with torch.no_grad():
         logits_l = model(feat_tensor_l)
@@ -88,7 +84,6 @@ def classify(input_dir, model, cfg, device, smooth_window=5):
 
     bimanual_preds = np.stack((preds_l, preds_r), axis=1)
 
-    # 5. 平滑处理
     if smooth_window > 0:
         bimanual_preds = smooth_mode(bimanual_preds, window=smooth_window)
 
@@ -96,13 +91,13 @@ def classify(input_dir, model, cfg, device, smooth_window=5):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="手形序列单次推理脚本 (完全数据驱动版)")
-    parser.add_argument('--input', type=str, required=True, help="输入文件夹路径 (包含多帧 SMPLX 的 .npy)")
-    parser.add_argument('--output', type=str, required=True, help="预测结果保存路径 (如 xxx/output.npy)")
-    parser.add_argument('--window', type=int, default=5, help="平滑窗口大小，设为0则不进行平滑")
+    parser = argparse.ArgumentParser(description="手形序列单次推理脚本")
+    parser.add_argument('--input', type=str, required=True, help="输入包含多帧SMPLX的.npy的 *文件夹* 路径")
+    parser.add_argument('--output', type=str, required=True, help="预测结果 *文件* 保存路径(如 ./out/output.npy)")
+    parser.add_argument('--window', type=int, default=5, help="平滑窗口大小，设为0则不进行平滑，默认为5")
     
     parser.add_argument('--weight', type=str, default='best_model.pth')
-    parser.add_argument('--runs', type=str, default=None, help="指定实验标号 (默认自动寻址最新的一次)")
+    parser.add_argument('--runs', type=str, default=None, help="指定实验标号，默认最新的一次")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -141,14 +136,19 @@ def main():
     logging.info(f"开始手形序列预测 (Inference)")
     logging.info(f"加载实验环境: {target_dir.name}")
     logging.info(f"模型架构: {cfg['model']['name']} | 分类头: {cfg['model']['head']}")
-    logging.info(f"特征类型: {cfg['data']['feature_type']}")
+    logging.info(f"特征类型: {cfg['model']['feature']}")
     logging.info(f"目标输入路径: {args.input}")
     logging.info("="*60)
 
-    feat_type = cfg['data']['feature_type']
-    dynamic_feat_dim = 105 if feat_type == "distance_flatten" else 1
-    if feat_type == "axis_angle":
+    feat_type = cfg['model']['feature']
+    if feat_type == "distance_flatten":
+        dynamic_feat_dim = 105
+    elif feat_type == "axis_angle":
         dynamic_feat_dim = 45
+    elif feat_type == "distance_kinematic":
+        dynamic_feat_dim = 3
+    else:
+        dynamic_feat_dim = 1
 
     model = build_model(
         model_name=cfg['model']['name'],
@@ -160,7 +160,7 @@ def main():
         m=cfg['model'].get('margin', 0.5)
     ).to(device)
 
-    model.load_state_dict(torch.load(weight_path, map_location=device))
+    model.load_state_dict(torch.load(weight_path, map_location=device, weights_only=True))
     
     # 预测
     predicted_sequence = classify(

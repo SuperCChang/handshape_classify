@@ -4,21 +4,49 @@ import smplx
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ==========================================
-# 底层数学计算辅助函数
-# ==========================================
 
 def _compute_distance_flatten(joints_coord):
-    """辅助函数 1：计算距离矩阵，并截取上三角展平为 105 维"""
+    """
+    计算距离矩阵，并截取上三角展平为 105 维
+    """
     num_joints = joints_coord.shape[1]
     dist_matrix = torch.cdist(joints_coord, joints_coord, p=2)
     triu_indices = torch.triu_indices(num_joints, num_joints, offset=1)
     return dist_matrix[:, triu_indices[0], triu_indices[1]] # 输出形状: (F, 105)
 
+
 def _compute_distance_matrix(joints_coord):
-    """辅助函数 2：计算完整距离矩阵，并补充通道维度变为图像"""
+    """
+    计算完整距离矩阵，并补充通道维度变为图像
+    """
     dist_matrix = torch.cdist(joints_coord, joints_coord, p=2)
     return dist_matrix.unsqueeze(1) # 输出形状: (F, 1, 15, 15)
+
+
+def _compute_distance_kinematic(joints_coord):
+    """
+    计算包含【距离、速度、加速度】的 3 通道运动学特征矩阵
+    输入: joints_coord 形状为 (F, 15, 3)
+    输出: 形状为 (F, 3, 15, 15)
+    """
+    # 1. 计算基础距离矩阵 D，形状 (F, 15, 15)
+    D = torch.cdist(joints_coord, joints_coord, p=2)
+    F = D.shape[0]
+    
+    # 2. 计算速度矩阵 V (一阶差分)
+    # 使用 zeros_like 可以自动继承 D 的 device 和 dtype
+    V = torch.zeros_like(D)
+    if F > 1:
+        V[1:] = D[1:] - D[:-1]
+        
+    # 3. 计算加速度矩阵 A (二阶差分)
+    A = torch.zeros_like(D)
+    if F > 2:
+        A[2:] = V[2:] - V[1:-1]
+        
+    # 4. 在通道维度 (dim=1) 上拼接：[D, V, A]
+    # 最终输出形状变为 (F, 3, 15, 15)
+    return torch.stack([D, V, A], dim=1)
 
 
 def _get_3d_joints_from_smplx(raw_data_list, smplx_model_path):
@@ -79,7 +107,9 @@ def _get_3d_joints_from_smplx(raw_data_list, smplx_model_path):
 
 
 def extract_axis_angle(raw_data_list, **kwargs):
-    """特征方案 1：直接使用 45 维轴角"""
+    """
+    特征：直接使用45维轴角
+    """
     features = []
     labels = []
     for item in raw_data_list:
@@ -97,7 +127,7 @@ def extract_axis_angle(raw_data_list, **kwargs):
 
 def extract_distance_flatten(raw_data_list, smplx_model_path=None, **kwargs):
     """
-    特征方案 2：105 维 3D 关节欧氏距离展平向量
+    特征：105维3D关节欧氏距离展平向量
     -> 适用模型：MLP 系列 (由于是一维向量，直接丢给全连接层)
     """
     joint_seqs, labels = _get_3d_joints_from_smplx(raw_data_list, smplx_model_path)
@@ -110,8 +140,7 @@ def extract_distance_flatten(raw_data_list, smplx_model_path=None, **kwargs):
 
 def extract_distance_matrix(raw_data_list, smplx_model_path=None, **kwargs):
     """
-    特征方案 3：完整的 1x15x15 关节距离热力图 (伪装成单通道灰度图)
-    -> 适用模型：CNN, VGG, ResNet 系列 (由于是二维矩阵，直接丢给 Conv2d)
+    特征：完整的1x15x15关节距离热力图 (伪装成单通道灰度图)
     """
     joint_seqs, labels = _get_3d_joints_from_smplx(raw_data_list, smplx_model_path)
     features = []
@@ -121,8 +150,21 @@ def extract_distance_matrix(raw_data_list, smplx_model_path=None, **kwargs):
     return features, labels
 
 
+def extract_distance_kinematic(raw_data_list, smplx_model_path=None, **kwargs):
+    """
+    特征：3通道运动学特征热力图 (距离, 速度, 加速度)
+    """
+    joint_seqs, labels = _get_3d_joints_from_smplx(raw_data_list, smplx_model_path)
+    features = []
+    for joints in joint_seqs:
+        # 将 (F, 15, 3) 转化为 (F, 3, 15, 15) 并放回 CPU 内存池
+        features.append(_compute_distance_kinematic(joints).cpu())
+    return features, labels
+
+
 FEATURE_EXTRACTORS = {
     "axis_angle": extract_axis_angle,
-    "distance_flatten": extract_distance_flatten,  # <--- 修改了名字
-    "distance_matrix": extract_distance_matrix     # <--- 新的二维提取方式
+    "distance_flatten": extract_distance_flatten,
+    "distance_matrix": extract_distance_matrix,
+    "distance_kinematic": extract_distance_kinematic
 }

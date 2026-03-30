@@ -23,6 +23,8 @@ from utils.core import setup_logger, get_new_run_dir, load_merged_config, genera
 def train_epoch(model, dataloader, criterion, optimizer, device):
     """
     专门负责一个 Epoch 内的训练逻辑。
+    Args:
+        model: 
     """
     model.train()
     total_loss = 0.0
@@ -50,8 +52,10 @@ def train_epoch(model, dataloader, criterion, optimizer, device):
 
 def main():
     parser = argparse.ArgumentParser(description="手形分类训练脚本")
-    parser.add_argument('--model', type=str, default='resnet')
-    parser.add_argument('--head', type=str, default='linear')
+    parser.add_argument('--model', type=str, default='resnet', help="用于分类的模型，默认为resnet")
+    parser.add_argument('--feature', type=str, default=None, help="模型使用的特征，默认为distance_matrix")
+    parser.add_argument('--head', type=str, default='linear', help="模型使用的分类头，默认为线性头")
+    parser.add_argument('--neg', type=str, default=None, help="负样本策略 (如 'synthetic')，默认不开启")
     parser.add_argument('--epochs', type=int, default=None)
     parser.add_argument('--lr', type=float, default=None)
     parser.add_argument('--batch_size', type=int, default=None)
@@ -59,6 +63,8 @@ def main():
 
     cfg = load_merged_config(args.model)
     
+    if args.feature is not None:
+        cfg['model']['feature'] = args.feature
     if args.head is not None:
         cfg['model']['head'] = args.head
     if args.epochs is not None:
@@ -70,17 +76,19 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    method_name = f"[{cfg['model']['name']}]_[{cfg['model']['head']}]_[{cfg['data']['feature_type']}]"
+    method_name = f"[{cfg['model']['name']}]_[{cfg['model']['head']}]_[{cfg['model']['feature']}]"
     run_dir = get_new_run_dir(cfg['train']['save_dir'], method_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     logger = setup_logger(run_dir / "train.log")
 
     try:
-        logger.info(f"==========实验初始化==========")
+        logger.info(f"{'='*60}")
         logger.info(f"运行目录：{run_dir}")
         logger.info(f"计算设备：{device}")
-        logger.info(f"特征提取：{cfg['data']['feature_type']}")
+        logger.info(f"模型：{cfg['model']['name']}")
+        logger.info(f"特征：{cfg['model']['feature']}")
+        logger.info(f"{'='*60}")
 
         with open(run_dir / "config_backup.yaml", 'w', encoding='utf-8') as f:
             yaml.dump(cfg, f, allow_unicode=True)
@@ -89,22 +97,26 @@ def main():
         dataset = HandshapeDataset(
             train_path=cfg['data']['train_path'],
             which_side_path=cfg['data']['which_side_path'],
-            feature_type=cfg['data']['feature_type'],
+            feature_type=cfg['model']['feature'],
             smplx_model_path=cfg['data']['smplx_model_path']
         )
 
         sample_feat = dataset[0][0]
         dynamic_feat_dim = sample_feat.shape[0]
-        logger.info(f"[*] 动态推断特征维度为: {dynamic_feat_dim}")
+        logger.info(f"动态推断特征维度为: {dynamic_feat_dim}")
 
-        """logger.info(f"检测到类别数为 {cfg['data']['num_classes']}，正在生成第0类(负样本)...")
-        neg_count = int(len(dataset) * 0.08) 
-        neg_feats, neg_labels = generate_synthetic_negatives(
-            num_negatives=neg_count,
-            feature_type=cfg['data']['feature_type']
-        )
-        dataset.append_samples(neg_feats, neg_labels)
-        logger.info(f"已注入{neg_count}条合成负样本。")"""
+        # 负样本注入
+        neg_strategy = cfg['data'].get('neg_strategy')
+        if neg_strategy == 'synthetic':
+            logger.info(f"[*] 检测到负样本策略为 '{neg_strategy}'，正在生成合成负样本...")
+            neg_count = int(len(dataset) * 0.08) 
+            
+            neg_feats, neg_labels = generate_synthetic_negatives(
+                num_negatives=neg_count,
+                sample_shape=dynamic_feat_dim 
+            )
+            dataset.append_samples(neg_feats, neg_labels)
+            logger.info(f"已成功注入 {neg_count} 条合成负样本数据 (Shape: {neg_feats.shape})。")
         
         dataloader = DataLoader(
             dataset, 
@@ -192,7 +204,7 @@ def main():
             
         if not (run_dir / "last_model.pth").exists():
             shutil.rmtree(run_dir, ignore_errors=True)
-            print(f"\n[清理机制触发]: 检测到实验未完成即崩溃，已自动删除无效目录 -> {run_dir}")
+            print(f"\n检测到实验未完成即崩溃，已自动删除无效目录：{run_dir}")
             
         error_dir = Path(cfg['train']['save_dir']) / "errors"
         error_dir.mkdir(parents=True, exist_ok=True)
@@ -201,14 +213,15 @@ def main():
         error_log_file = error_dir / f"error_{error_time}_{method_name}.log"
         
         with open(error_log_file, 'w', encoding='utf-8') as ef:
-            ef.write(f"========== 崩溃时间: {error_time} ==========\n")
+            ef.write(f"{'='*60}\n")
+            ef.write(f"崩溃时间: {error_time}\n")
             ef.write(f"实验名称: {method_name}\n")
             ef.write(f"关键配置: Batch={cfg['train']['batch_size']}, LR={cfg['train']['lr']}\n")
             ef.write(f"报错简述: {e}\n\n")
-            ef.write("========== 完整堆栈 (Traceback) ==========\n")
+            ef.write(f"{'='*60}\n")
             ef.write(error_traceback)
             
-        print(f"[错误日志记录]: 本次崩溃的详细堆栈已独立封存至 -> {error_log_file}")
+        print(f"本次崩溃的详细堆栈已独立封存至：{error_log_file}")
         raise e
 
 
